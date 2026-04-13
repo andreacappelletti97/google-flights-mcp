@@ -1,5 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import express from "express";
+import { randomUUID } from "crypto";
 import { searchFlightsSchema, handleSearchFlights } from "./tools/search-flights.js";
 import { searchMultiCitySchema, handleSearchMultiCity } from "./tools/search-multi-city.js";
 import { priceInsightsSchema, handlePriceInsights } from "./tools/price-insights.js";
@@ -22,7 +25,6 @@ const toMcpResponse = (result: Result<string>) =>
     ? { content: [{ type: "text" as const, text: result.value }] }
     : { content: [{ type: "text" as const, text: `Error: ${result.error}` }], isError: true as const };
 
-// Wrap every handler with automatic invocation/timing/result logging
 const loggedSearchFlights = withToolLogging("search_flights", handleSearchFlights);
 const loggedSearchMultiCity = withToolLogging("search_multi_city", handleSearchMultiCity);
 const loggedPriceInsights = withToolLogging("get_price_insights", handlePriceInsights);
@@ -98,16 +100,87 @@ const registerTools = (server: McpServer): void => {
     async (params) => toMcpResponse(await loggedLayoverAnalysis(params)));
 };
 
-const main = async (): Promise<void> => {
-  const server = new McpServer({
-    name: "google-flights",
-    version: "1.0.0",
-  });
+// --- Stdio mode (default): for Claude Desktop, Claude Code, local usage ---
+const startStdio = async (): Promise<void> => {
+  const server = new McpServer({ name: "google-flights", version: "1.0.0" });
   registerTools(server);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("Google Flights MCP server running on stdio (12 tools)");
 };
+
+// --- HTTP mode: for Smithery, remote deployment ---
+// Session state requires Map mutation — unavoidable for HTTP session management.
+/* eslint-disable functional/immutable-data */
+const startHttp = async (): Promise<void> => {
+  const app = express();
+  const sessions = new Map<string, { server: McpServer; transport: StreamableHTTPServerTransport }>();
+
+  app.post("/mcp", async (req, res) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+    if (sessionId && sessions.has(sessionId)) {
+      const session = sessions.get(sessionId);
+      await session?.transport.handleRequest(req, res, req.body);
+      return;
+    }
+
+    const server = new McpServer({ name: "google-flights", version: "1.0.0" });
+    registerTools(server);
+
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+    });
+
+    transport.onclose = () => {
+      const sid = transport.sessionId;
+      if (sid) sessions.delete(sid);
+    };
+
+    await server.connect(transport);
+
+    const sid = transport.sessionId;
+    if (sid) sessions.set(sid, { server, transport });
+
+    await transport.handleRequest(req, res, req.body);
+  });
+
+  app.get("/mcp", async (req, res) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    if (sessionId && sessions.has(sessionId)) {
+      const session = sessions.get(sessionId);
+      await session?.transport.handleRequest(req, res);
+      return;
+    }
+    res.status(400).json({ error: "No session. Send a POST to /mcp first." });
+  });
+
+  app.delete("/mcp", async (req, res) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    if (sessionId && sessions.has(sessionId)) {
+      const session = sessions.get(sessionId);
+      await session?.transport.handleRequest(req, res);
+      sessions.delete(sessionId);
+      return;
+    }
+    res.status(400).json({ error: "No session found." });
+  });
+
+  // Health check
+  app.get("/health", (_req, res) => {
+    res.json({ status: "ok", tools: 12, version: "1.0.0" });
+  });
+
+  const port = parseInt(process.env["PORT"] ?? "3000", 10);
+  app.listen(port, () => {
+    console.error(`Google Flights MCP server running on http://0.0.0.0:${port}/mcp (12 tools)`);
+  });
+};
+
+// Entry point: --http flag or PORT env var triggers HTTP mode, otherwise stdio
+const mode = process.argv.includes("--http") || process.env["PORT"] ? "http" : "stdio";
+
+const main = mode === "http" ? startHttp : startStdio;
 
 main().catch((error) => {
   console.error("Fatal error:", error);

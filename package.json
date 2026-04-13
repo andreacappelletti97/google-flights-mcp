@@ -12,7 +12,7 @@
     "url": "https://github.com/andreacappelletti97/google-flights-mcp/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "files": [
     "dist",
@@ -50,12 +50,14 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.9.0",
+    "express": "^5.2.1",
     "undici": "^8.1.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
     "eslint": "^10.2.0",
     "eslint-plugin-functional": "^9.0.4",
