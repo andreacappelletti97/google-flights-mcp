@@ -1,0 +1,19 @@
+name: google-flights-mcp
+description: >
+  The most feature-rich MCP server for Google Flights. 12 tools including
+  flight search, price tracking, cabin comparison, carbon emissions, calendar
+  heatmap, layover analysis, and nearby airport suggestions. No API key required.
+author: Andrea Cappelletti
+sourceUrl: https://github.com/andreacappelletti97/google-flights-mcp
+license: ISC
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties: {}
+  commandFunction: |-
+    (config) => ({
+      command: 'npx',
+      args: ['-y', 'google-flights-mcp'],
+    })

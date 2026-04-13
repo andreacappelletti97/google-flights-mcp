@@ -1,0 +1,67 @@
+{
+  "name": "google-flights-mcp",
+  "version": "1.0.0",
+  "description": "The most feature-rich MCP server for Google Flights. 12 tools for search, price tracking, cabin comparison, emissions, layover analysis, and more. No API key required.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andreacappelletti97/google-flights-mcp.git"
+  },
+  "homepage": "https://github.com/andreacappelletti97/google-flights-mcp",
+  "bugs": {
+    "url": "https://github.com/andreacappelletti97/google-flights-mcp/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "google-flights-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "check": "tsc --noEmit && eslint src/ && vitest run",
+    "prepublishOnly": "npm run check && npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "google-flights",
+    "flights",
+    "flight-search",
+    "travel",
+    "price-tracking",
+    "claude",
+    "ai-tools",
+    "carbon-emissions"
+  ],
+  "author": "Andrea Cappelletti",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.9.0",
+    "undici": "^8.1.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.0",
+    "eslint": "^10.2.0",
+    "eslint-plugin-functional": "^9.0.4",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.58.2",
+    "vitest": "^4.1.4"
+  }
+}
