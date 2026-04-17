@@ -14,17 +14,18 @@ const KNOWN_CURRENCIES: ReadonlySet<string> = new Set([
 ]);
 
 // Scan protobuf bytes for \x1a\x03 prefix followed by a 3-letter currency code.
-// Recursive scan replaces imperative loop for FP consistency.
+// Uses Array.from(...).reduce to stay FP without recursion (V8 has no TCO,
+// so a recursive scan over a large buffer would risk stack overflow).
 const findCurrencyInProtobuf = (buf: Buffer): string | null => {
-  const scan = (i: number): string | null => {
-    if (i >= buf.length - 4) return null;
+  const limit = Math.max(0, buf.length - 4);
+  return Array.from({ length: limit }).reduce<string | null>((acc, _v, i) => {
+    if (acc !== null) return acc;
     if (buf[i] === 0x1a && buf[i + 1] === 0x03) {
       const candidate = String.fromCharCode(buf[i + 2], buf[i + 3], buf[i + 4]);
       if (KNOWN_CURRENCIES.has(candidate)) return candidate;
     }
-    return scan(i + 1);
-  };
-  return scan(0);
+    return null;
+  }, null);
 };
 
 const findCurrencyByRegex = (decoded: string): string | null =>
@@ -57,15 +58,52 @@ const safeNumberArray = (v: unknown): readonly number[] =>
 const safeNumberOrNull = (v: unknown): number | null =>
   typeof v === "number" ? v : null;
 
+// --- Field index constants (Google's nested-array schema) ---
+// These reference positions in Google Flights' internal response format.
+// When Google changes their schema, these are the values to update — and they
+// show up as named lookups rather than magic numbers scattered around.
+
+const ENTRY = {
+  FLIGHT_DATA: 0, // [0] = flight block
+  PRICE_BLOCK: 1, // [1] = price block
+} as const;
+
+const FLIGHT = {
+  LEGS: 2,          // [0][2] = legs array
+  TOTAL_DURATION: 9, // [0][9] = duration in minutes
+} as const;
+
+const LEG = {
+  MIN_LENGTH: 23,
+  DEPARTURE_AIRPORT: 3,
+  ARRIVAL_AIRPORT: 6,
+  DEPARTURE_TIME: 8,
+  ARRIVAL_TIME: 10,
+  DURATION: 11,
+  SEAT_PITCH_LEGACY: 14,
+  AIRCRAFT: 17,
+  DEPARTURE_DATE: 20,
+  ARRIVAL_DATE: 21,
+  AIRLINE_INFO: 22, // [code, flightNumber, ?, name]
+  SEAT_PITCH: 30,
+  EMISSIONS_GRAMS: 31,
+} as const;
+
+const AIRLINE = {
+  CODE: 0,
+  FLIGHT_NUMBER: 1,
+  NAME: 3,
+} as const;
+
 // --- Structural validators ---
 
 const validateFlightEntry = (data: readonly unknown[]): Result<readonly unknown[]> => {
-  const flightData = data[0];
+  const flightData = data[ENTRY.FLIGHT_DATA];
   if (!Array.isArray(flightData)) {
     logger.warn("parse_skip_entry", { reason: "flight entry [0] is not an array", type: typeof flightData });
     return err("Malformed flight entry: [0] is not an array");
   }
-  const legs = flightData[2];
+  const legs = flightData[FLIGHT.LEGS];
   if (!Array.isArray(legs) || legs.length === 0) {
     logger.warn("parse_skip_entry", { reason: "flight entry [0][2] (legs) is not a non-empty array" });
     return err("Malformed flight entry: legs data is not an array");
@@ -74,11 +112,11 @@ const validateFlightEntry = (data: readonly unknown[]): Result<readonly unknown[
 };
 
 const validateLegEntry = (legData: readonly unknown[]): boolean => {
-  if (legData.length < 23) {
-    logger.warn("parse_skip_leg", { reason: "leg has fewer than 23 elements", length: legData.length });
+  if (legData.length < LEG.MIN_LENGTH) {
+    logger.warn("parse_skip_leg", { reason: "leg too short", length: legData.length, minLength: LEG.MIN_LENGTH });
     return false;
   }
-  if (typeof legData[3] !== "string" || typeof legData[6] !== "string") {
+  if (typeof legData[LEG.DEPARTURE_AIRPORT] !== "string" || typeof legData[LEG.ARRIVAL_AIRPORT] !== "string") {
     logger.warn("parse_skip_leg", { reason: "missing airport codes" });
     return false;
   }
@@ -88,25 +126,31 @@ const validateLegEntry = (legData: readonly unknown[]): boolean => {
 // --- Individual parsers (pure) ---
 
 const parseLeg = (legData: readonly unknown[]): FlightLeg => {
-  const airlineData = safeArray(legData[22]);
+  const airlineData = safeArray(legData[LEG.AIRLINE_INFO]);
+  const aircraftRaw = legData[LEG.AIRCRAFT];
+  const seatPitchRaw = legData[LEG.SEAT_PITCH];
+  const seatPitchLegacyRaw = legData[LEG.SEAT_PITCH_LEGACY];
   return {
-    airline: safeString(airlineData[0], "Unknown"),
-    airlineName: safeString(airlineData[3], safeString(airlineData[0], "Unknown")),
-    flightNumber: safeString(airlineData[1]),
-    departureAirport: safeString(legData[3]),
-    arrivalAirport: safeString(legData[6]),
+    airline: safeString(airlineData[AIRLINE.CODE], "Unknown"),
+    airlineName: safeString(airlineData[AIRLINE.NAME], safeString(airlineData[AIRLINE.CODE], "Unknown")),
+    flightNumber: safeString(airlineData[AIRLINE.FLIGHT_NUMBER]),
+    departureAirport: safeString(legData[LEG.DEPARTURE_AIRPORT]),
+    arrivalAirport: safeString(legData[LEG.ARRIVAL_AIRPORT]),
     departureTime: formatDateTime(
-      safeNumberArray(legData[20]),
-      safeNumberArray(legData[8])
+      safeNumberArray(legData[LEG.DEPARTURE_DATE]),
+      safeNumberArray(legData[LEG.DEPARTURE_TIME])
     ),
     arrivalTime: formatDateTime(
-      safeNumberArray(legData[21]),
-      safeNumberArray(legData[10])
+      safeNumberArray(legData[LEG.ARRIVAL_DATE]),
+      safeNumberArray(legData[LEG.ARRIVAL_TIME])
     ),
-    duration: safeNumber(legData[11]),
-    aircraft: typeof legData[17] === "string" ? legData[17] : null,
-    seatPitch: typeof legData[30] === "string" ? legData[30] : (typeof legData[14] === "string" ? legData[14] : null),
-    emissionsGrams: safeNumberOrNull(legData[31]),
+    duration: safeNumber(legData[LEG.DURATION]),
+    aircraft: typeof aircraftRaw === "string" ? aircraftRaw : null,
+    seatPitch:
+      typeof seatPitchRaw === "string" ? seatPitchRaw :
+      typeof seatPitchLegacyRaw === "string" ? seatPitchLegacyRaw :
+      null,
+    emissionsGrams: safeNumberOrNull(legData[LEG.EMISSIONS_GRAMS]),
   };
 };
 
@@ -114,17 +158,19 @@ const parseFlight = (data: readonly unknown[]): Result<FlightResult> => {
   const validation = validateFlightEntry(data);
   if (validation.tag === "err") return validation;
 
-  const flightData = safeArray(data[0]);
-  const rawLegs = safeArray(flightData[2]);
+  const flightData = safeArray(data[ENTRY.FLIGHT_DATA]);
+  const rawLegs = safeArray(flightData[FLIGHT.LEGS]);
   const validLegs = rawLegs.filter((leg) => validateLegEntry(safeArray(leg)));
 
   if (validLegs.length === 0) {
     return err("No valid legs found in flight entry");
   }
 
-  const totalDuration = safeNumber(flightData[9]);
-  const priceBlock = Array.isArray(data[1]) ? data[1] : null;
-  const priceArr = priceBlock && Array.isArray(priceBlock[0]) ? priceBlock[0] : null;
+  const totalDuration = safeNumber(flightData[FLIGHT.TOTAL_DURATION]);
+  const priceBlockRaw = data[ENTRY.PRICE_BLOCK];
+  const priceBlock: readonly unknown[] | null = Array.isArray(priceBlockRaw) ? priceBlockRaw : null;
+  const priceArr: readonly unknown[] | null =
+    priceBlock && Array.isArray(priceBlock[0]) ? priceBlock[0] : null;
   const legs = validLegs.map((leg) => parseLeg(safeArray(leg)));
 
   // Sum emissions across all legs

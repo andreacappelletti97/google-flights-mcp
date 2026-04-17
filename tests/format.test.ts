@@ -10,11 +10,15 @@ describe("formatPrice", () => {
     expect(formatPrice(199, null)).toBe("$199");
   });
 
-  it("formats non-USD with currency suffix", () => {
-    expect(formatPrice(850, "EUR")).toBe("850 EUR");
+  it("formats EUR with the euro sign", () => {
+    expect(formatPrice(850, "EUR")).toBe("\u20AC850");
   });
 
-  it("formats JPY correctly", () => {
-    expect(formatPrice(95000, "JPY")).toBe("95000 JPY");
+  it("formats JPY with the yen sign", () => {
+    expect(formatPrice(95000, "JPY")).toBe("\u00A595000");
+  });
+
+  it("falls back to trailing code for unknown currencies", () => {
+    expect(formatPrice(100, "CHF")).toBe("100 CHF");
   });
 });

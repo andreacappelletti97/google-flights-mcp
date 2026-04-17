@@ -39,6 +39,18 @@ const getDb = (() => {
     mkdirSync(DB_DIR, { recursive: true });
     db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");
+    migrate(db);
+    return db;
+  };
+})();
+
+// Schema versioning via SQLite's user_version pragma.
+// Each migration runs once and bumps the version. New migrations must:
+//   (1) append to this array, never modify existing entries,
+//   (2) be idempotent where possible (CREATE IF NOT EXISTS, etc.).
+const MIGRATIONS: readonly ((db: Database.Database) => void)[] = [
+  // v1: initial schema
+  (db) => {
     db.exec(`
       CREATE TABLE IF NOT EXISTS price_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,9 +63,21 @@ const getDb = (() => {
       );
       CREATE INDEX IF NOT EXISTS idx_route_date ON price_history(route, travel_date, cabin);
     `);
-    return db;
-  };
-})();
+  },
+];
+
+const migrate = (db: Database.Database): void => {
+  const currentVersion = (db.pragma("user_version", { simple: true }) as number) ?? 0;
+  const targetVersion = MIGRATIONS.length;
+  if (currentVersion >= targetVersion) return;
+  const pending = MIGRATIONS.slice(currentVersion);
+  db.transaction(() => {
+    pending.forEach((run, i) => {
+      run(db);
+      db.pragma(`user_version = ${currentVersion + i + 1}`);
+    });
+  })();
+};
 
 // IO: record a price observation
 export const recordPrice = (

@@ -33,12 +33,9 @@ type DatePrice = {
   readonly currency: string | null;
 };
 
-// Pure: generate sample dates across a range
-const generateDates = (start: string, totalDays: number): readonly string[] => {
-  const step = totalDays > 14 ? 3 : 2;
-  const count = Math.floor(totalDays / step) + 1;
-  return Array.from({ length: count }, (_, i) => addDays(start, i * step));
-};
+// Pure: generate one date per day in the range [start, start+totalDays]
+const generateDates = (start: string, totalDays: number): readonly string[] =>
+  Array.from({ length: totalDays + 1 }, (_, i) => addDays(start, i));
 
 // Pure: validate inputs
 const validateInputs = (
@@ -47,7 +44,12 @@ const validateInputs = (
 ): Result<number> => {
   const total = daysBetween(startDate, endDate);
   if (total < 0) return err("endDate must be after startDate.");
-  if (total > 30) return err("date range must be 30 days or less to avoid excessive requests.");
+  if (total > 14) {
+    return err(
+      "date range must be 14 days or less (one API call per day). " +
+      "For wider ranges, use get_calendar_heatmap, which returns ~60 days of prices in a single call."
+    );
+  }
   return ok(total);
 };
 

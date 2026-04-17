@@ -116,6 +116,19 @@ const startHttp = async (): Promise<void> => {
   const app = express();
   const sessions = new Map<string, { server: McpServer; transport: StreamableHTTPServerTransport }>();
 
+  // Optional bearer-token auth. Set GF_MCP_AUTH_TOKEN to require auth;
+  // when unset, the server is open (fine for localhost, risky for public deploys).
+  const authToken = process.env["GF_MCP_AUTH_TOKEN"];
+  const requireAuth: express.RequestHandler = (req, res, next) => {
+    if (!authToken) return next();
+    const header = req.headers.authorization ?? "";
+    const expected = `Bearer ${authToken}`;
+    if (header === expected) return next();
+    res.status(401).json({ error: "Unauthorized" });
+  };
+
+  app.use("/mcp", requireAuth);
+
   app.post("/mcp", async (req, res) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
@@ -173,7 +186,9 @@ const startHttp = async (): Promise<void> => {
 
   const port = parseInt(process.env["PORT"] ?? "3000", 10);
   app.listen(port, () => {
-    console.error(`Google Flights MCP server running on http://0.0.0.0:${port}/mcp (12 tools)`);
+    console.error(
+      `Google Flights MCP server running on http://0.0.0.0:${port}/mcp (12 tools, auth: ${authToken ? "bearer token required" : "disabled"})`
+    );
   });
 };
 

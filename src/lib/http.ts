@@ -49,29 +49,51 @@ const computeDelay = (attempt: number): number =>
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+// Parse a Retry-After header value. The header may be either:
+//   - a non-negative integer number of seconds
+//   - an HTTP-date (RFC 7231)
+// Returns ms, or null if the header is missing/unparseable.
+const parseRetryAfter = (raw: string | string[] | null | undefined): number | null => {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+  const date = Date.parse(value);
+  if (Number.isFinite(date)) return Math.max(0, date - Date.now());
+  return null;
+};
+
 // Single-attempt POST via undici with fetch fallback
 const postOnce = async (
   url: string,
   body: string,
   headers: Record<string, string>
-): Promise<{ readonly status: number; readonly text: string }> => {
+): Promise<{ readonly status: number; readonly text: string; readonly retryAfterMs: number | null }> => {
   try {
-    const { statusCode, body: responseBody } = await request(url, {
+    const { statusCode, headers: responseHeaders, body: responseBody } = await request(url, {
       method: "POST",
       headers,
       body,
     });
-    return { status: statusCode, text: await responseBody.text() };
+    return {
+      status: statusCode,
+      text: await responseBody.text(),
+      retryAfterMs: parseRetryAfter(responseHeaders["retry-after"]),
+    };
   } catch (undiciErr) {
     logger.warn("undici_failed_fallback_to_fetch", {
       error: undiciErr instanceof Error ? undiciErr.message : String(undiciErr),
     });
     const response = await fetch(url, { method: "POST", headers, body });
-    return { status: response.status, text: await response.text() };
+    return {
+      status: response.status,
+      text: await response.text(),
+      retryAfterMs: parseRetryAfter(response.headers.get("retry-after")),
+    };
   }
 };
 
-// Recursive retry with exponential backoff
+// Recursive retry with exponential backoff (or Retry-After when provided)
 const postWithRetry = async (
   url: string,
   body: string,
@@ -79,13 +101,20 @@ const postWithRetry = async (
   attempt: number
 ): Promise<Result<string>> => {
   try {
-    const { status, text } = await postOnce(url, body, headers);
+    const { status, text, retryAfterMs } = await postOnce(url, body, headers);
 
     if (status >= 200 && status < 300) return ok(text);
 
     if (attempt < config.retry.maxRetries && RETRYABLE_STATUSES.has(status)) {
-      const waitMs = computeDelay(attempt);
-      logger.warn("http_retry", { status, attempt: attempt + 1, retryInMs: Math.round(waitMs) });
+      const waitMs = retryAfterMs !== null
+        ? Math.min(retryAfterMs, config.retry.maxDelayMs)
+        : computeDelay(attempt);
+      logger.warn("http_retry", {
+        status,
+        attempt: attempt + 1,
+        retryInMs: Math.round(waitMs),
+        honoredRetryAfter: retryAfterMs !== null,
+      });
       await delay(waitMs);
       return postWithRetry(url, body, headers, attempt + 1);
     }

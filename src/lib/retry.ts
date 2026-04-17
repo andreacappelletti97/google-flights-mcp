@@ -23,9 +23,9 @@ const DEFAULT_CB_CONFIG: CircuitBreakerConfig = {
 };
 
 export const createCircuitBreaker = (
-  config: Partial<CircuitBreakerConfig> = {}
+  overrides: Partial<CircuitBreakerConfig> = {}
 ) => {
-  const cfg = { ...DEFAULT_CB_CONFIG, ...config };
+  const cfg = { ...DEFAULT_CB_CONFIG, ...overrides };
   const circuit: CircuitState = { failures: 0, lastFailureTime: 0, state: "closed" };
 
   const canRequest = (): boolean => {

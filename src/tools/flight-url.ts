@@ -11,29 +11,47 @@ export const flightUrlSchema = z.object({
   stops: z.number().int().min(0).max(2).optional().describe("Max stops (0=nonstop)"),
 });
 
-// Google Flights cabin class codes
-const CABIN_CODES: Readonly<Record<string, number>> = {
-  economy: 1, premium_economy: 2, business: 3, first: 4,
+// Cabin labels embedded in the natural-language search query
+const CABIN_LABELS: Readonly<Record<string, string>> = {
+  economy: "economy",
+  premium_economy: "premium economy",
+  business: "business class",
+  first: "first class",
 };
 
-// Pure: construct a Google Flights URL for direct booking
+const STOPS_LABELS: Readonly<Record<number, string>> = {
+  0: "nonstop",
+  1: "1 stop",
+  2: "2 stops",
+};
+
+// Pure: construct a Google Flights search URL.
+//
+// We use the natural-language `q=` parameter rather than the protobuf-encoded
+// `tfs=` parameter. Google Flights parses the query and pre-fills the search
+// form. This is slightly less precise than `tfs=` (which requires encoding an
+// internal protobuf), but it is stable and will not break when Google rotates
+// their internal schema.
 const buildFlightsUrl = (params: z.infer<typeof flightUrlSchema>): string => {
   const origin = params.origin.toUpperCase();
   const dest = params.destination.toUpperCase();
-  const cabin = CABIN_CODES[params.cabinClass ?? "economy"];
+  const cabin = CABIN_LABELS[params.cabinClass ?? "economy"];
   const pax = params.adults ?? 1;
+  const stopsLabel = params.stops !== undefined ? STOPS_LABELS[params.stops] : null;
+
+  const parts = [
+    `${cabin} flights from ${origin} to ${dest} on ${params.departureDate}`,
+    params.returnDate ? `returning ${params.returnDate}` : null,
+    pax > 1 ? `for ${pax} adults` : null,
+    stopsLabel,
+  ].filter((p): p is string => p !== null);
 
   const queryParams = new URLSearchParams({
-    tfs: "", // triggers search
+    q: parts.join(" "),
     hl: "en",
     curr: "USD",
   });
-
-  if (cabin !== 1) queryParams.set("cl", String(cabin));
-  if (pax !== 1) queryParams.set("px", String(pax));
-  if (params.stops !== undefined) queryParams.set("so", String(params.stops));
-
-  return `https://www.google.com/travel/flights?q=Flights+to+${dest}+from+${origin}+on+${params.departureDate}${params.returnDate ? `+return+${params.returnDate}` : ""}&${queryParams.toString()}`;
+  return `https://www.google.com/travel/flights?${queryParams.toString()}`;
 };
 
 export const handleFlightUrl = async (
@@ -42,10 +60,10 @@ export const handleFlightUrl = async (
   const url = buildFlightsUrl(params);
   const tripType = params.returnDate ? "Round-trip" : "One-way";
   return ok(
-    `${tripType} Google Flights link:\n` +
+    `${tripType} Google Flights search link:\n` +
     `${params.origin.toUpperCase()} -> ${params.destination.toUpperCase()}\n` +
     `${params.departureDate}${params.returnDate ? ` - ${params.returnDate}` : ""}\n\n` +
     `${url}\n\n` +
-    `Click the link to view and book on Google Flights.`
+    `Click to open on Google Flights. The search form will be pre-filled from the URL.`
   );
 };
