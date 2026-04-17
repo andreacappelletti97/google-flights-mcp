@@ -6,21 +6,21 @@
 
 The most feature-rich MCP server for Google Flights. No API key required.
 
-12 tools for searching flights, tracking prices, comparing cabins, analyzing layovers, and more — all powered by real-time Google Flights data.
+12 tools for searching flights, tracking prices, comparing cabins, analyzing layovers, and more, all powered by real-time Google Flights data.
 
 Works with Claude Desktop, Claude Code, Cursor, and any MCP-compatible client.
 
 ## Features no other Google Flights MCP has
 
 - **Carbon emissions** per flight and per leg (CO2 in kg)
-- **Price context** — Google's own assessment of whether a price is low, typical, or high
-- **Price tracking** — track prices over time with SQLite persistence, detect drops and trends
-- **Calendar heatmap** — 60 days of daily prices in a single API call
-- **Cabin class comparison** — economy vs premium vs business vs first, side by side
-- **Nearby airport suggestions** — find cheaper alternatives (e.g., EWR/LGA near JFK)
-- **Layover analysis** — connection time risk assessment (tight/comfortable/overnight)
-- **Aircraft & seat details** — Boeing 787 vs 777, seat pitch in inches
-- **Google Flights URLs** — direct booking links users can click
+- **Price context**: Google's own assessment of whether a price is low, typical, or high
+- **Price tracking**: track prices over time with SQLite persistence, detect drops and trends
+- **Calendar heatmap**: 60 days of daily prices in a single API call
+- **Cabin class comparison**: economy vs premium vs business vs first, side by side
+- **Nearby airport suggestions**: find cheaper alternatives (e.g., EWR/LGA near JFK)
+- **Layover analysis**: connection time risk assessment (tight/comfortable/overnight)
+- **Aircraft & seat details**: Boeing 787 vs 777, seat pitch in inches
+- **Google Flights URLs**: direct booking links users can click
 
 ## What you can ask
 
@@ -42,7 +42,7 @@ Works immediately with Claude Code:
 claude mcp add google-flights -- npx -y google-flights-mcp
 ```
 
-Or with Claude Desktop — add to your `claude_desktop_config.json`:
+Or with Claude Desktop, add to your `claude_desktop_config.json`:
 
 ```json
 {
@@ -160,22 +160,22 @@ Average: $632
 ```
 Airports near JFK within 150km:
 
-  LGA - LaGuardia Airport (New York, US) — 17km away
-  EWR - Newark Liberty International Airport (Newark, US) — 33km away
-  HPN - Westchester County Airport (White Plains, US) — 48km away
+  LGA - LaGuardia Airport (New York, US), 17km away
+  EWR - Newark Liberty International Airport (Newark, US), 33km away
+  HPN - Westchester County Airport (White Plains, US), 48km away
 ```
 
 ## How it works
 
-There is no official Google Flights API. This server reverse-engineers Google's internal `FlightsFrontendService` endpoint — the same approach used by [fli](https://github.com/punitarani/fli) (1.9k+ stars). We extract not just flights, but hidden metadata: emissions, price assessments, daily price calendars, aircraft types, and seat details.
+There is no official Google Flights API. This server reverse-engineers Google's internal `FlightsFrontendService` endpoint. It extracts not just flights, but hidden metadata: emissions, price assessments, daily price calendars, aircraft types, and seat details.
 
 ### Reliability
 
-- **Caching** — 5-minute TTL cache, identical searches don't hit Google twice
-- **Retry with backoff** — Exponential backoff + jitter on 429/5xx errors
-- **Circuit breaker** — Stops requests after 5 consecutive failures, auto-recovers after 30s
-- **Structural validation** — Clear errors when Google changes their response format
-- **TLS mitigation** — `undici` with browser-like headers + rotating User-Agents, `fetch` fallback
+- **Caching**: 5-minute TTL cache, identical searches don't hit Google twice
+- **Retry with backoff**: exponential backoff + jitter on 429/5xx errors, honors `Retry-After` headers
+- **Circuit breaker**: stops requests after 5 consecutive failures, auto-recovers after 30s
+- **Structural validation**: clear errors when Google changes their response format
+- **TLS mitigation**: `undici` with browser-like headers + rotating User-Agents, `fetch` fallback
 
 ### Price tracking
 
@@ -197,19 +197,19 @@ npm run dev         # Build in watch mode
 
 Fully functional TypeScript codebase:
 
-- **No mutation** — All types `readonly`, no `let`/`var`/`.push()`/`for` loops
-- **Result monad** — Errors are values (`Result<T, E>`), not exceptions
-- **Pure/IO separation** — Pure transforms are separate from network and disk IO
-- **Composition** — `pipe()` + `flatMap()` for chaining fallible operations
+- **No mutation**: all types `readonly`, no `let`/`var`/`.push()`/`for` loops
+- **Result monad**: errors are values (`Result<T, E>`), not exceptions
+- **Pure/IO separation**: pure transforms are separate from network and disk IO
+- **Composition**: `pipe()` + `flatMap()` for chaining fallible operations
 
 See [CLAUDE.md](CLAUDE.md) for architecture details and the Google Flights response format reference.
 
 ## Limitations
 
-- **No official API** — Uses an undocumented Google endpoint that could change at any time. Structural validation makes breakages obvious.
-- **Rate limiting** — Google may throttle heavy use. Built-in retry and circuit breaker handle transient issues.
-- **Prices are estimates** — Prices reflect query time; they can change before booking.
-- **Currency** — Determined by Google based on IP/locale.
+- **No official API**: uses an undocumented Google endpoint that could change at any time. Structural validation makes breakages obvious.
+- **Rate limiting**: Google may throttle heavy use. Built-in retry and circuit breaker handle transient issues.
+- **Prices are estimates**: prices reflect query time; they can change before booking.
+- **Currency**: determined by Google based on IP/locale.
 
 ## Contributing
 
