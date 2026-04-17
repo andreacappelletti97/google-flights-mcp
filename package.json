@@ -6,7 +6,7 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/andreacappelletti97/google-flights-mcp.git"
+    "url": "git+https://github.com/andreacappelletti97/google-flights-mcp.git"
   },
   "homepage": "https://github.com/andreacappelletti97/google-flights-mcp",
   "bugs": {
@@ -21,7 +21,7 @@
     "LICENSE"
   ],
   "bin": {
-    "google-flights-mcp": "./dist/index.js"
+    "google-flights-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsup",
