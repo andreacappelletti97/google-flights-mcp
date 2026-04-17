@@ -1,6 +1,6 @@
 {
   "name": "google-flights-mcp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "mcpName": "io.github.andreacappelletti97/google-flights",
   "description": "The most feature-rich MCP server for Google Flights. 12 tools for search, price tracking, cabin comparison, emissions, layover analysis, and more. No API key required.",
   "type": "module",
