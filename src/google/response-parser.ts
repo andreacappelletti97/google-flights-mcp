@@ -31,7 +31,7 @@ const findCurrencyInProtobuf = (buf: Buffer): string | null => {
 const findCurrencyByRegex = (decoded: string): string | null =>
   (decoded.match(/[A-Z]{3}/g) ?? []).find((m) => KNOWN_CURRENCIES.has(m)) ?? null;
 
-const extractCurrencyFromToken = (token: string): string | null => {
+export const extractCurrencyFromToken = (token: string): string | null => {
   const buf = Buffer.from(token, "base64");
   return findCurrencyInProtobuf(buf) ?? findCurrencyByRegex(buf.toString("latin1"));
 };
@@ -148,8 +148,8 @@ const parseLeg = (legData: readonly unknown[]): FlightLeg => {
     aircraft: typeof aircraftRaw === "string" ? aircraftRaw : null,
     seatPitch:
       typeof seatPitchRaw === "string" ? seatPitchRaw :
-      typeof seatPitchLegacyRaw === "string" ? seatPitchLegacyRaw :
-      null,
+        typeof seatPitchLegacyRaw === "string" ? seatPitchLegacyRaw :
+          null,
     emissionsGrams: safeNumberOrNull(legData[LEG.EMISSIONS_GRAMS]),
   };
 };
@@ -211,17 +211,34 @@ const parsePriceContext = (inner: readonly unknown[]): PriceContext | null => {
   return { currentPrice: current, typicalPrice: typical, priceDifference: normalizedDiff, lowPrice: low, highPrice: high, assessment };
 };
 
-const parseDailyPrices = (inner: readonly unknown[]): readonly DailyPrice[] => {
+// Formats an epoch-ms timestamp as YYYY-MM-DD in LOCAL time.
+//
+// Google sends local-midnight timestamps. toISOString() would render them in
+// UTC, which rolls the date back a day for every user at a positive UTC offset:
+// local midnight on 2026-07-15 prints as "2026-07-14". Build the date from
+// local components instead.
+const toLocalDate = (ts: number): string => {
+  const d = new Date(ts);
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+};
+
+// The route's TRAILING price history, at priceData[10] as [[timestamp, price], ...].
+//
+// This is NOT a forward-looking calendar: the series always ends yesterday and
+// is unaffected by the requested travelDate. It is the only multi-day series
+// GetShoppingResults returns, so forward calendars must be scanned date by date
+// (see google/calendar-graph.ts).
+const parseRecentPriceHistory = (inner: readonly unknown[]): readonly DailyPrice[] => {
   const priceData = safeArray(inner[5]);
-  // Daily prices are at priceData[10] as [[timestamp, price], ...]
   const dailyArr = safeArray(safeArray(priceData[10])[0]);
   return dailyArr.flatMap((entry) => {
     const pair = safeArray(entry);
     const ts = safeNumber(pair[0], 0);
     const price = safeNumber(pair[1], 0);
     if (ts === 0 || price === 0) return [];
-    const date = new Date(ts).toISOString().split("T")[0];
-    return [{ date, price }];
+    return [{ date: toLocalDate(ts), price }];
   });
 };
 
@@ -239,7 +256,7 @@ const parseAvailableAirlines = (inner: readonly unknown[]): readonly { readonly 
 
 const parseMetadata = (inner: readonly unknown[]): SearchMetadata => ({
   priceContext: parsePriceContext(inner),
-  dailyPrices: parseDailyPrices(inner),
+  recentPriceHistory: parseRecentPriceHistory(inner),
   availableAirlines: parseAvailableAirlines(inner),
 });
 

@@ -2,7 +2,8 @@ import type { FlightSearchFilters, FlightSegment } from "./types.js";
 import { TripType } from "./types.js";
 
 // Pure transformation: FlightSegment -> nested array for Google's API
-const formatSegment = (
+// Exported for reuse by the GetCalendarGraph payload, which uses the same shape.
+export const formatSegment = (
   segment: FlightSegment,
   filters: FlightSearchFilters
 ): readonly unknown[] => {

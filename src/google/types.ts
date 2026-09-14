@@ -102,7 +102,8 @@ export type DailyPrice = {
 // Rich search metadata from Google's response
 export type SearchMetadata = {
   readonly priceContext: PriceContext | null;
-  readonly dailyPrices: readonly DailyPrice[];
+  // Trailing price history for the route; always ends yesterday. Not a forward calendar.
+  readonly recentPriceHistory: readonly DailyPrice[];
   readonly availableAirlines: readonly { readonly code: string; readonly name: string }[];
 };
 

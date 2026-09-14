@@ -139,3 +139,45 @@ describe("parseFlightsResponse", () => {
     expect(result.value.flights[0].legs[1].departureAirport).toBe("DEN");
   });
 });
+
+describe("recentPriceHistory", () => {
+  // Google sends local-midnight timestamps; rendering them via toISOString()
+  // rolls the date back a day at positive UTC offsets.
+  const makeResponseWithHistory = (pairs: readonly (readonly [number, number])[]) => {
+    const priceData = Array(11).fill(null);
+    priceData[10] = [pairs];
+    const inner = [null, null, [[makeFlight()]], null, null, priceData];
+    return ")]}'\n" + JSON.stringify([["wrb.fr", "FlightsFrontendService", JSON.stringify(inner)]]);
+  };
+
+  it("formats local-midnight timestamps without shifting the date", () => {
+    const localMidnight = new Date(2026, 6, 15, 0, 0, 0).getTime(); // 2026-07-15 local
+    const result = parseFlightsResponse(makeResponseWithHistory([[localMidnight, 207]]));
+    expect(result.tag).toBe("ok");
+    if (result.tag !== "ok") return;
+    expect(result.value.metadata.recentPriceHistory[0]).toEqual({
+      date: "2026-07-15",
+      price: 207,
+    });
+  });
+
+  it("keeps consecutive local midnights on consecutive days", () => {
+    const day1 = new Date(2026, 6, 15, 0, 0, 0).getTime();
+    const day2 = new Date(2026, 6, 16, 0, 0, 0).getTime();
+    const result = parseFlightsResponse(makeResponseWithHistory([[day1, 207], [day2, 206]]));
+    expect(result.tag).toBe("ok");
+    if (result.tag !== "ok") return;
+    expect(result.value.metadata.recentPriceHistory.map((d) => d.date)).toEqual([
+      "2026-07-15",
+      "2026-07-16",
+    ]);
+  });
+
+  it("skips entries with a zero timestamp or price", () => {
+    const ts = new Date(2026, 6, 15, 0, 0, 0).getTime();
+    const result = parseFlightsResponse(makeResponseWithHistory([[0, 207], [ts, 0], [ts, 199]]));
+    expect(result.tag).toBe("ok");
+    if (result.tag !== "ok") return;
+    expect(result.value.metadata.recentPriceHistory).toHaveLength(1);
+  });
+});
