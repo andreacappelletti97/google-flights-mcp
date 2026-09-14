@@ -14,6 +14,8 @@ import { logger, startTimer } from "../lib/logger.js";
 import { createCircuitBreaker } from "../lib/retry.js";
 import { httpPost } from "../lib/http.js";
 import { createCache, get as cacheGet, set as cacheSet, buildCacheKey } from "../lib/cache.js";
+import { mapInBatches } from "../lib/concurrency.js";
+import { config } from "../lib/config.js";
 
 const FLIGHTS_URL =
   "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults";
@@ -107,14 +109,20 @@ const assembleMultiLeg = async (
     return ok({ tag: "flights" as const, flights, metadata });
   }
 
-  const nestedResults = await Promise.all(
-    flights.slice(0, topN).map(async (selected) => {
+  // One extra request per candidate leg. Firing all of them at once is what
+  // makes a round-trip search hit Google's throttle ~topN times faster than a
+  // one-way search, so cap the burst rather than sending topN requests at once.
+  const nestedResults = await mapInBatches(
+    flights.slice(0, topN),
+    config.search.multiLegConcurrency,
+    config.search.multiLegBatchDelayMs,
+    async (selected) => {
       const nextFilters = withSelectedFlight(filters, selectedCount, selected);
       const nextResult = await assembleMultiLeg(nextFilters, topN);
       return nextResult.tag === "ok"
         ? prependToCombos(selected, nextResult.value)
         : ([] as readonly FlightCombo[]);
-    })
+    }
   );
 
   const combos = nestedResults.flat();

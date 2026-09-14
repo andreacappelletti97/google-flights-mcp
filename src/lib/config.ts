@@ -35,6 +35,10 @@ export const config = {
     defaultCabinClass: envString("DEFAULT_CABIN_CLASS", "economy"),
     priceInsightsMaxDays: envInt("PRICE_INSIGHTS_MAX_DAYS", 30),
     priceInsightsBatchDelay: envInt("PRICE_INSIGHTS_BATCH_DELAY_MS", 500),
+    // Round-trip and multi-city searches issue one extra request per candidate
+    // leg. Cap how many go out at once, and pause between waves.
+    multiLegConcurrency: envInt("MULTILEG_CONCURRENCY", 3),
+    multiLegBatchDelayMs: envInt("MULTILEG_BATCH_DELAY_MS", 250),
   },
 
   // Nearby airports
