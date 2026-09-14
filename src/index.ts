@@ -50,12 +50,12 @@ const registerTools = (server: McpServer): void => {
     async (params) => toMcpResponse(await loggedSearchMultiCity(params)));
 
   server.tool("get_price_insights",
-    "Find the cheapest travel dates for a route within a date range. Scans multiple departure dates.",
+    "Find the cheapest travel dates for a route within a date range (up to 61 days), ranked cheapest first. Single API call.",
     priceInsightsSchema.shape,
     async (params) => toMcpResponse(await loggedPriceInsights(params)));
 
   server.tool("get_calendar_heatmap",
-    "Get a full calendar of daily flight prices (~60 days). Single API call, no scanning. Shows cheapest dates at a glance.",
+    "Get a calendar of the cheapest one-way fare per day, starting at departureDate (default 30 days, max 61). Single API call, no scanning. Shows cheapest dates at a glance.",
     calendarHeatmapSchema.shape,
     async (params) => toMcpResponse(await loggedCalendarHeatmap(params)));
 
