@@ -40,6 +40,38 @@ const BROWSER_HEADERS: Readonly<Record<string, string>> = {
 
 const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([429, 500, 502, 503, 504]);
 
+// Google throttles an over-eager client with HTTP 200 and an envelope carrying
+// no payload, rather than a 429:
+//
+//   )]}'
+//   [["wrb.fr",null,null,null,null,[13]],["di",120],["af.httprm",120,...]]
+//
+// A hard rejection looks similar, with an ["er",...,400,...] entry instead. In
+// both cases the batchexecute frame is well-formed but no entry carries the
+// serialized payload string the parsers read, so the response reaches them
+// looking like a format change ("No flight data found in response") and the
+// retry machinery never engages — 200 is success as far as the status check is
+// concerned.
+//
+// Treat a payload-less envelope as retryable. A real response always carries at
+// least one "wrb.fr" entry whose [2] is the payload string; a genuine format
+// change would still have that entry and fail further in, so this stays narrow.
+export const isPayloadlessEnvelope = (text: string): boolean => {
+  const stripped = text.replace(/^\)\]\}'/, "").trim();
+  if (stripped.length === 0) return true;
+  try {
+    const outer: unknown = JSON.parse(stripped);
+    if (!Array.isArray(outer)) return false;
+    return !outer.some(
+      (entry) => Array.isArray(entry) && entry[0] === "wrb.fr" && typeof entry[2] === "string"
+    );
+  } catch {
+    // Unparseable bodies are handed to the parsers unchanged; retrying them
+    // would mask a real format change behind three identical failures.
+    return false;
+  }
+};
+
 const computeDelay = (attempt: number): number =>
   Math.min(
     config.retry.baseDelayMs * Math.pow(2, attempt) + Math.random() * config.retry.baseDelayMs,
@@ -103,7 +135,31 @@ const postWithRetry = async (
   try {
     const { status, text, retryAfterMs } = await postOnce(url, body, headers);
 
-    if (status >= 200 && status < 300) return ok(text);
+    if (status >= 200 && status < 300) {
+      if (isPayloadlessEnvelope(text)) {
+        if (attempt < config.retry.maxRetries) {
+          const waitMs = computeDelay(attempt);
+          logger.warn("http_throttle_retry", {
+            status,
+            attempt: attempt + 1,
+            retryInMs: Math.round(waitMs),
+            bodyLength: text.length,
+          });
+          await delay(waitMs);
+          return postWithRetry(url, body, headers, attempt + 1);
+        }
+        // Say what this actually is. Handing the empty body to the parsers
+        // produces "Google may have changed the response format", which has
+        // sent several bug reports down the wrong path.
+        logger.warn("http_throttle_exhausted", { attempts: attempt + 1, bodyLength: text.length });
+        return err(
+          `Google returned no data after ${attempt + 1} attempts — this is rate limiting, ` +
+          `not a format change. Wait a minute and retry, or reduce maxResults on round-trip ` +
+          `searches (each result costs an extra request).`
+        );
+      }
+      return ok(text);
+    }
 
     if (attempt < config.retry.maxRetries && RETRYABLE_STATUSES.has(status)) {
       const waitMs = retryAfterMs !== null
