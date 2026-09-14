@@ -43,4 +43,73 @@ describe("buildCacheKey", () => {
   it("sorts keys for consistency", () => {
     expect(buildCacheKey({ b: 2, a: 1 })).toBe(buildCacheKey({ a: 1, b: 2 }));
   });
+
+  it("sorts nested keys for consistency", () => {
+    expect(buildCacheKey({ a: { d: 4, c: 3 } })).toBe(
+      buildCacheKey({ a: { c: 3, d: 4 } })
+    );
+  });
+
+  it("retains nested keys instead of stripping them", () => {
+    const key = buildCacheKey({
+      segments: [{ departureAirport: "VIX", arrivalAirport: "CGR" }],
+    });
+    expect(key).toContain("departureAirport");
+    expect(key).toContain("VIX");
+  });
+
+  it("distinguishes searches that differ only inside segments", () => {
+    const base = {
+      tripType: 1,
+      passengers: { adults: 1, children: 0, infantsOnLap: 0, infantsInSeat: 0 },
+      stops: 0,
+      seatType: 0,
+      sortBy: 0,
+    };
+    const outbound = {
+      ...base,
+      segments: [
+        { departureAirport: "VIX", arrivalAirport: "CGR", travelDate: "2026-09-15" },
+        { departureAirport: "CGR", arrivalAirport: "VIX", travelDate: "2026-09-26" },
+      ],
+    };
+    const reversed = {
+      ...base,
+      segments: [
+        { departureAirport: "CGR", arrivalAirport: "VIX", travelDate: "2026-09-26" },
+        { departureAirport: "VIX", arrivalAirport: "CGR", travelDate: "2026-09-15" },
+      ],
+    };
+
+    expect(buildCacheKey(outbound)).not.toBe(buildCacheKey(reversed));
+  });
+
+  it("distinguishes a return leg carrying a selectedFlight", () => {
+    const outbound = {
+      tripType: 1,
+      passengers: { adults: 1, children: 0, infantsOnLap: 0, infantsInSeat: 0 },
+      segments: [
+        { departureAirport: "VIX", arrivalAirport: "CGR", travelDate: "2026-09-15" },
+        { departureAirport: "CGR", arrivalAirport: "VIX", travelDate: "2026-09-26" },
+      ],
+      stops: 0,
+      seatType: 0,
+      sortBy: 0,
+    };
+    // What assembleMultiLeg() passes on the recursive call for the return leg.
+    const withSelected = {
+      ...outbound,
+      segments: outbound.segments.map((seg, i) =>
+        i === 0 ? { ...seg, selectedFlight: { price: 633, id: "LA4537" } } : seg
+      ),
+    };
+
+    expect(buildCacheKey(outbound)).not.toBe(buildCacheKey(withSelected));
+  });
+
+  it("preserves array order", () => {
+    expect(buildCacheKey({ segments: [{ a: 1 }, { a: 2 }] })).not.toBe(
+      buildCacheKey({ segments: [{ a: 2 }, { a: 1 }] })
+    );
+  });
 });
