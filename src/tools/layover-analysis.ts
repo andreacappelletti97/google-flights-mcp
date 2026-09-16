@@ -17,9 +17,20 @@ import { lookupAirport } from "../data/airports.js";
 export const layoverAnalysisSchema = z.object({
   origin: z.string().length(3).describe("Departure airport IATA code"),
   destination: z.string().length(3).describe("Arrival airport IATA code"),
-  departureDate: z.string().describe("Departure date (YYYY-MM-DD)"),
-  cabinClass: z.enum(["economy", "premium_economy", "business", "first"]).optional().default("economy"),
-  maxResults: z.number().int().min(1).max(10).optional().default(5),
+  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe("Departure date in YYYY-MM-DD format"),
+  cabinClass: z
+    .enum(["economy", "premium_economy", "business", "first"])
+    .optional()
+    .default("economy")
+    .describe("Cabin class (economy, premium_economy, business, or first)"),
+  maxResults: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .optional()
+    .default(5)
+    .describe("Maximum number of flight results to analyze"),
 });
 
 const SEAT_MAP: Readonly<Record<string, SeatType>> = {

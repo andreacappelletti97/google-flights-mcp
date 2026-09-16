@@ -4,10 +4,14 @@ import { ok, type Result } from "../lib/result.js";
 export const flightUrlSchema = z.object({
   origin: z.string().length(3).describe("Departure airport IATA code"),
   destination: z.string().length(3).describe("Arrival airport IATA code"),
-  departureDate: z.string().describe("Departure date (YYYY-MM-DD)"),
-  returnDate: z.string().optional().describe("Return date (YYYY-MM-DD) for round-trip"),
-  cabinClass: z.enum(["economy", "premium_economy", "business", "first"]).optional().default("economy"),
-  adults: z.number().int().min(1).optional().default(1),
+  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe("Departure date in YYYY-MM-DD format"),
+  returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").optional().describe("Return date in YYYY-MM-DD format for round-trip"),
+  cabinClass: z
+    .enum(["economy", "premium_economy", "business", "first"])
+    .optional()
+    .default("economy")
+    .describe("Cabin class (economy, premium_economy, business, or first)"),
+  adults: z.number().int().min(1).optional().default(1).describe("Number of adult passengers"),
   stops: z.number().int().min(0).max(2).optional().describe("Max stops (0=nonstop)"),
 });
 

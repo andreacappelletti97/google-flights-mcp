@@ -15,11 +15,15 @@ const MAX_DAYS = MAX_CALENDAR_DAYS;
 export const calendarHeatmapSchema = z.object({
   origin: z.string().length(3).describe("Departure airport IATA code"),
   destination: z.string().length(3).describe("Arrival airport IATA code"),
-  departureDate: z.string().describe("First date of the window to price (YYYY-MM-DD)"),
+  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe("First date of the window to price, in YYYY-MM-DD format"),
   days: z.number().int().min(1).max(MAX_DAYS).optional().default(DEFAULT_DAYS)
     .describe(`How many consecutive days to price, starting at departureDate (1-${MAX_DAYS}, default ${DEFAULT_DAYS}). Returned in a single request.`),
-  cabinClass: z.enum(["economy", "premium_economy", "business", "first"]).optional().default("economy"),
-  adults: z.number().int().min(1).optional().default(1),
+  cabinClass: z
+    .enum(["economy", "premium_economy", "business", "first"])
+    .optional()
+    .default("economy")
+    .describe("Cabin class (economy, premium_economy, business, or first)"),
+  adults: z.number().int().min(1).optional().default(1).describe("Number of adult passengers"),
 });
 
 const SEAT_MAP: Readonly<Record<string, SeatType>> = {
