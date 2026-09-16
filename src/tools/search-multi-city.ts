@@ -18,18 +18,22 @@ export const searchMultiCitySchema = z.object({
       z.object({
         origin: z.string().length(3).describe("Departure airport IATA code"),
         destination: z.string().length(3).describe("Arrival airport IATA code"),
-        date: z.string().describe("Travel date in YYYY-MM-DD format"),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe("Travel date in YYYY-MM-DD format"),
       })
     )
     .min(2)
     .max(5)
     .describe("Flight segments (2-5 legs)"),
-  cabinClass: z.enum(["economy", "premium_economy", "business", "first"]).optional().default("economy"),
-  adults: z.number().int().min(1).optional().default(1),
-  children: z.number().int().min(0).optional().default(0),
-  infants: z.number().int().min(0).optional().default(0),
-  maxStops: z.number().int().min(0).max(2).optional(),
-  maxResults: z.number().int().min(1).max(10).optional().default(3),
+  cabinClass: z
+    .enum(["economy", "premium_economy", "business", "first"])
+    .optional()
+    .default("economy")
+    .describe("Cabin class (economy, premium_economy, business, or first)"),
+  adults: z.number().int().min(1).optional().default(1).describe("Number of adult passengers"),
+  children: z.number().int().min(0).optional().default(0).describe("Number of child passengers (under 12)"),
+  infants: z.number().int().min(0).optional().default(0).describe("Number of infant passengers (under 2)"),
+  maxStops: z.number().int().min(0).max(2).optional().describe("Maximum number of stops (0=nonstop, 1=1 or fewer, 2=2 or fewer)"),
+  maxResults: z.number().int().min(1).max(10).optional().default(3).describe("Maximum number of itinerary results to return"),
 });
 
 const SEAT_MAP: Readonly<Record<string, SeatType>> = {

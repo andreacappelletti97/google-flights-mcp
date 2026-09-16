@@ -13,15 +13,23 @@ import { ok, err, type Result } from "../lib/result.js";
 export const trackPriceSchema = z.object({
   origin: z.string().length(3).describe("Departure airport IATA code"),
   destination: z.string().length(3).describe("Arrival airport IATA code"),
-  departureDate: z.string().describe("Travel date (YYYY-MM-DD)"),
-  cabinClass: z.enum(["economy", "premium_economy", "business", "first"]).optional().default("economy"),
+  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe("Travel date in YYYY-MM-DD format"),
+  cabinClass: z
+    .enum(["economy", "premium_economy", "business", "first"])
+    .optional()
+    .default("economy")
+    .describe("Cabin class (economy, premium_economy, business, or first)"),
 });
 
 export const priceHistorySchema = z.object({
   origin: z.string().length(3).describe("Departure airport IATA code"),
   destination: z.string().length(3).describe("Arrival airport IATA code"),
-  departureDate: z.string().describe("Travel date (YYYY-MM-DD)"),
-  cabinClass: z.enum(["economy", "premium_economy", "business", "first"]).optional().default("economy"),
+  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe("Travel date in YYYY-MM-DD format"),
+  cabinClass: z
+    .enum(["economy", "premium_economy", "business", "first"])
+    .optional()
+    .default("economy")
+    .describe("Cabin class (economy, premium_economy, business, or first)"),
 });
 
 export const trackedRoutesSchema = z.object({});

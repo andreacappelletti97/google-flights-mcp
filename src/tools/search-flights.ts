@@ -17,8 +17,8 @@ import type { Result } from "../lib/result.js";
 export const searchFlightsSchema = z.object({
   origin: z.string().length(3).describe("Departure airport IATA code (e.g., JFK)"),
   destination: z.string().length(3).describe("Arrival airport IATA code (e.g., NRT)"),
-  departureDate: z.string().describe("Departure date in YYYY-MM-DD format"),
-  returnDate: z.string().optional().describe("Return date in YYYY-MM-DD format (makes it round-trip)"),
+  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe("Departure date in YYYY-MM-DD format"),
+  returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").optional().describe("Return date in YYYY-MM-DD format (makes it round-trip)"),
   cabinClass: z.enum(["economy", "premium_economy", "business", "first"]).optional().default("economy").describe("Cabin class"),
   adults: z.number().int().min(1).optional().default(1).describe("Number of adult passengers"),
   children: z.number().int().min(0).optional().default(0).describe("Number of child passengers"),
@@ -92,6 +92,21 @@ const buildFilters = (
   };
 };
 
+const sortFlights = (flights: readonly FlightResult[], sortBy: string): readonly FlightResult[] => {
+  switch (sortBy) {
+    case "price":
+      return flights.toSorted((a, b) => a.price - b.price);
+    case "duration":
+      return flights.toSorted((a, b) => a.duration - b.duration);
+    case "departure":
+      return flights.toSorted((a, b) => (a.legs[0]?.departureTime ?? "").localeCompare(b.legs[0]?.departureTime ?? ""));
+    case "arrival":
+      return flights.toSorted((a, b) => (a.legs[a.legs.length - 1]?.arrivalTime ?? "").localeCompare(b.legs[b.legs.length - 1]?.arrivalTime ?? ""));
+    default:
+      return flights;
+  }
+};
+
 const formatSearchResult = (result: SearchResult, params: z.infer<typeof searchFlightsSchema>): string => {
   const max = params.maxResults ?? 5;
   const priceCtx = result.metadata.priceContext ? `\n${formatPriceContext(result.metadata.priceContext)}\n` : "";
@@ -107,7 +122,8 @@ const formatSearchResult = (result: SearchResult, params: z.infer<typeof searchF
     return `Round-trip flights: ${params.origin} <-> ${params.destination}\n${params.departureDate} - ${params.returnDate}${priceCtx}\n${lines.join("\n\n")}`;
   }
 
-  const lines = result.flights.slice(0, max).map(formatFlightResult);
+  const sortedFlights = sortFlights(result.flights, params.sortBy ?? "best");
+  const lines = sortedFlights.slice(0, max).map(formatFlightResult);
   return `Flights from ${params.origin} to ${params.destination} on ${params.departureDate}:${priceCtx}\n${lines.join("\n\n")}`;
 };
 

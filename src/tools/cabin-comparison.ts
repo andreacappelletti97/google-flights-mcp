@@ -15,8 +15,8 @@ import { ok, err, type Result } from "../lib/result.js";
 export const cabinComparisonSchema = z.object({
   origin: z.string().length(3).describe("Departure airport IATA code"),
   destination: z.string().length(3).describe("Arrival airport IATA code"),
-  departureDate: z.string().describe("Departure date (YYYY-MM-DD)"),
-  adults: z.number().int().min(1).optional().default(1),
+  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe("Departure date in YYYY-MM-DD format"),
+  adults: z.number().int().min(1).optional().default(1).describe("Number of adult passengers"),
   maxStops: z.number().int().min(0).max(2).optional().describe("Max stops (0=nonstop)"),
 });
 

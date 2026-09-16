@@ -18,10 +18,14 @@ import { ok, err, type Result } from "../lib/result.js";
 export const priceInsightsSchema = z.object({
   origin: z.string().length(3).describe("Departure airport IATA code"),
   destination: z.string().length(3).describe("Arrival airport IATA code"),
-  startDate: z.string().describe("Start of date range (YYYY-MM-DD)"),
-  endDate: z.string().describe(`End of date range (YYYY-MM-DD). At most ${MAX_CALENDAR_DAYS} days after startDate.`),
-  cabinClass: z.enum(["economy", "premium_economy", "business", "first"]).optional().default("economy"),
-  adults: z.number().int().min(1).optional().default(1),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe("Start of date range in YYYY-MM-DD format"),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe(`End of date range in YYYY-MM-DD format. At most ${MAX_CALENDAR_DAYS} days after startDate.`),
+  cabinClass: z
+    .enum(["economy", "premium_economy", "business", "first"])
+    .optional()
+    .default("economy")
+    .describe("Cabin class (economy, premium_economy, business, or first)"),
+  adults: z.number().int().min(1).optional().default(1).describe("Number of adult passengers"),
 });
 
 const SEAT_MAP: Readonly<Record<string, SeatType>> = {
