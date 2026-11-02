@@ -57,7 +57,6 @@ export type FlightSearchFilters = {
   readonly maxPrice?: number;
   readonly airlines?: readonly string[];
   readonly maxDuration?: number;
-  readonly excludeBasicEconomy?: boolean;
 };
 
 export type FlightLeg = {

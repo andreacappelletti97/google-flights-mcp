@@ -45,17 +45,17 @@ const registerTools = (server: McpServer): void => {
     async (params) => toMcpResponse(await loggedSearchFlights(params)));
 
   server.tool("search_multi_city",
-    "Search for multi-city (multi-leg) flight itineraries. Supports 2-5 segments.",
+    "Search for multi-city (multi-leg) flight itineraries (2-5 segments). Currently unavailable: Google no longer serves multi-city results to unsigned requests, so this returns an error; search each leg with search_flights.",
     searchMultiCitySchema.shape,
     async (params) => toMcpResponse(await loggedSearchMultiCity(params)));
 
   server.tool("get_price_insights",
-    "Find the cheapest travel dates for a route within a date range (up to 61 days), ranked cheapest first. Single API call.",
+    "Find the cheapest travel dates for a route within a date range (up to 31 days), ranked cheapest first. Prices each day with its own search.",
     priceInsightsSchema.shape,
     async (params) => toMcpResponse(await loggedPriceInsights(params)));
 
   server.tool("get_calendar_heatmap",
-    "Get a calendar of the cheapest one-way fare per day, starting at departureDate (default 30 days, max 61). Single API call, no scanning. Shows cheapest dates at a glance.",
+    "Get a calendar of the cheapest one-way fare per day, starting at departureDate (default 14 days, max 31). Shows cheapest dates at a glance.",
     calendarHeatmapSchema.shape,
     async (params) => toMcpResponse(await loggedCalendarHeatmap(params)));
 

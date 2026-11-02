@@ -33,8 +33,10 @@ export const config = {
   search: {
     defaultMaxResults: envInt("DEFAULT_MAX_RESULTS", 5),
     defaultCabinClass: envString("DEFAULT_CABIN_CLASS", "economy"),
-    priceInsightsMaxDays: envInt("PRICE_INSIGHTS_MAX_DAYS", 30),
-    priceInsightsBatchDelay: envInt("PRICE_INSIGHTS_BATCH_DELAY_MS", 500),
+    // get_calendar_heatmap and get_price_insights load one search page per
+    // day. Cap how many load at once, and pause between waves.
+    calendarConcurrency: envInt("CALENDAR_CONCURRENCY", 3),
+    calendarBatchDelayMs: envInt("CALENDAR_BATCH_DELAY_MS", 500),
     // Round-trip and multi-city searches issue one extra request per candidate
     // leg. Cap how many go out at once, and pause between waves.
     multiLegConcurrency: envInt("MULTILEG_CONCURRENCY", 3),
