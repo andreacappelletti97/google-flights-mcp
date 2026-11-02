@@ -6,12 +6,12 @@
     "url": "https://github.com/andreacappelletti97/google-flights-mcp",
     "source": "github"
   },
-  "version": "1.0.3",
+  "version": "1.1.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "google-flights-mcp",
-      "version": "1.0.3",
+      "version": "1.1.0",
       "transport": {
         "type": "stdio"
       }
