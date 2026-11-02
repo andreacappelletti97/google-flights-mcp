@@ -15,7 +15,7 @@ Works with Claude Desktop, Claude Code, Cursor, and any MCP-compatible client.
 - **Carbon emissions** per flight and per leg (CO2 in kg)
 - **Price context**: Google's own assessment of whether a price is low, typical, or high
 - **Price tracking**: track prices over time with SQLite persistence, detect drops and trends
-- **Calendar heatmap**: 60 days of daily prices in a single API call
+- **Calendar heatmap**: the cheapest fare for each day of a window of up to 31 days
 - **Cabin class comparison**: economy vs premium vs business vs first, side by side
 - **Nearby airport suggestions**: find cheaper alternatives (e.g., EWR/LGA near JFK)
 - **Layover analysis**: connection time risk assessment (tight/comfortable/overnight)
@@ -92,14 +92,14 @@ Restart your MCP client. You should see 12 flight tools available.
 | Tool | Description |
 |------|-------------|
 | `search_flights` | One-way & round-trip search. Returns prices, airlines, durations, stops, aircraft, seat pitch, CO2 emissions, and price context. |
-| `search_multi_city` | Multi-leg itinerary search (2-5 segments). |
+| `search_multi_city` | Multi-leg itinerary search (2-5 segments). **Currently unavailable**: Google serves multi-city results only to its own signed page requests (see Limitations). Search each leg with `search_flights`. |
 
 ### Price intelligence
 
 | Tool | Description |
 |------|-------------|
-| `get_calendar_heatmap` | Full calendar of daily prices (~60 days) from a single API call. Cheapest dates at a glance. |
-| `get_price_insights` | Scan a date range to find cheapest departure dates (multiple API calls for precision). |
+| `get_calendar_heatmap` | Cheapest one-way fare for each day from `departureDate` (14 days by default, up to 31). Cheapest dates at a glance. |
+| `get_price_insights` | Rank the departure dates in a range (up to 31 days) from cheapest to most expensive. |
 | `compare_cabin_classes` | Compare economy, premium economy, business, and first class prices for the same route. |
 | `track_price` | Record current price and report trend (dropping/rising/stable). Persists in SQLite. |
 | `get_price_history` | View all recorded price observations for a tracked route. |
@@ -137,8 +137,8 @@ Flight 2: $1310 | 11h 5m | 0 stop(s) | CO2: 545kg
 ### get_calendar_heatmap
 
 ```
-Price calendar: SFO -> NRT
-61 days of data
+Price calendar (one-way, cheapest per day): SFO -> NRT
+14 days of data
 
 Cheapest: $384 (2026-02-12)
 Most expensive: $870 (2026-04-13)
@@ -167,7 +167,7 @@ Airports near JFK within 150km:
 
 ## How it works
 
-There is no official Google Flights API. This server reverse-engineers Google's internal `FlightsFrontendService` endpoint. It extracts not just flights, but hidden metadata: emissions, price assessments, daily price calendars, aircraft types, and seat details.
+There is no official Google Flights API. This server loads Google Flights' public search page and reads the result data the page embeds, the same data Google's internal `FlightsFrontendService` returns. It extracts not just flights, but hidden metadata: emissions, price assessments, daily price calendars, aircraft types, and seat details.
 
 ### Reliability
 
@@ -175,6 +175,7 @@ There is no official Google Flights API. This server reverse-engineers Google's 
 - **Retry with backoff**: exponential backoff + jitter on 429/5xx errors, honors `Retry-After` headers
 - **Circuit breaker**: stops requests after 5 consecutive failures, auto-recovers after 30s
 - **Structural validation**: clear errors when Google changes their response format
+- **Paced fan-out**: round trips and calendars load several pages; they go out a few at a time (`GF_MCP_MULTILEG_CONCURRENCY`, `GF_MCP_CALENDAR_CONCURRENCY`)
 - **TLS mitigation**: `undici` with browser-like headers + rotating User-Agents, `fetch` fallback
 
 ### Price tracking
@@ -186,7 +187,7 @@ Price history is stored in SQLite at `~/.google-flights-mcp/prices.db`. Each cal
 ```bash
 npm install         # Install dependencies
 npm run build       # Build with tsup
-npm test            # Run tests (85 tests)
+npm test            # Run tests
 npm run lint        # ESLint with FP rules (no-let, immutable-data, no-loop-statements)
 npm run typecheck   # TypeScript strict type checking
 npm run check       # typecheck + lint + test (the full CI pipeline)
@@ -206,7 +207,10 @@ See [CLAUDE.md](CLAUDE.md) for architecture details and the Google Flights respo
 
 ## Limitations
 
-- **No official API**: uses an undocumented Google endpoint that could change at any time. Structural validation makes breakages obvious.
+- **No official API**: reads data embedded in Google's public search page, which can change at any time. Structural validation makes breakages obvious.
+- **Multi-city is unavailable**: since August 2026 Google's internal flight endpoints only accept requests signed by its own page JavaScript, and the public page carries no rows for multi-city trips.
+- **Calendars cost one page per day**: Google's single-call calendar endpoint is gated the same way, so `get_calendar_heatmap` and `get_price_insights` search each day, up to 31 days.
+- **Not encoded**: `maxPrice` and `maxDuration` are applied to the results after the search, so a capped search can return fewer options.
 - **Rate limiting**: Google may throttle heavy use. Built-in retry and circuit breaker handle transient issues.
 - **Prices are estimates**: prices reflect query time; they can change before booking.
 - **Currency**: determined by Google based on IP/locale.

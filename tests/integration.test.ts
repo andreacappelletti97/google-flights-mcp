@@ -51,4 +51,36 @@ describeIntegration("integration: Google Flights", () => {
     },
     30_000
   );
+
+  it(
+    "returns return legs for the chosen outbound on a round trip",
+    async () => {
+      const today = new Date().toISOString().split("T")[0];
+      const out = addDays(today, 21);
+      const back = addDays(today, 28);
+
+      const result = await searchFlights(
+        {
+          tripType: TripType.ROUND_TRIP,
+          passengers: { adults: 1, children: 0, infantsOnLap: 0, infantsInSeat: 0 },
+          segments: [
+            { departureAirport: "SFO", arrivalAirport: "LAX", travelDate: out },
+            { departureAirport: "LAX", arrivalAirport: "SFO", travelDate: back },
+          ],
+          stops: MaxStops.ANY,
+          seatType: SeatType.ECONOMY,
+          sortBy: SortBy.CHEAPEST,
+        },
+        2
+      );
+
+      expect(result.tag).toBe("ok");
+      if (result.tag !== "ok" || result.value.tag !== "combos") return;
+      const [outbound, ret] = result.value.combos[0];
+      expect(outbound.legs[0].departureTime.startsWith(out)).toBe(true);
+      expect(ret.legs[0].departureAirport).toBe("LAX");
+      expect(ret.legs[0].departureTime.startsWith(back)).toBe(true);
+    },
+    60_000
+  );
 });

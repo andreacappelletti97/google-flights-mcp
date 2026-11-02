@@ -229,7 +229,7 @@ const toLocalDate = (ts: number): string => {
 // This is NOT a forward-looking calendar: the series always ends yesterday and
 // is unaffected by the requested travelDate. It is the only multi-day series
 // GetShoppingResults returns, so forward calendars must be scanned date by date
-// (see google/calendar-graph.ts).
+// (see google/calendar.ts).
 const parseRecentPriceHistory = (inner: readonly unknown[]): readonly DailyPrice[] => {
   const priceData = safeArray(inner[5]);
   const dailyArr = safeArray(safeArray(priceData[10])[0]);
@@ -275,7 +275,7 @@ const validateOuterResponse = (parsed: unknown): Result<readonly unknown[]> => {
   return ok(parsed);
 };
 
-type ParsedInner = {
+export type ParsedInner = {
   readonly flights: readonly FlightResult[];
   readonly metadata: SearchMetadata;
 };
@@ -291,8 +291,16 @@ const findFlightEntry = (outer: readonly unknown[]): readonly unknown[] | null =
   }) as readonly unknown[] | null;
 
 // Parse the found entry into flights + metadata
-const parseFlightEntry = (entry: readonly unknown[]): Result<ParsedInner> => {
-  const inner = JSON.parse(entry[2] as string);
+const parseFlightEntry = (entry: readonly unknown[]): Result<ParsedInner> =>
+  parseFlightsPayload(JSON.parse(entry[2] as string));
+
+// Parse an already-decoded payload: the inner array the RPC carried as a
+// JSON string, and the search page inlines as its ds:1 blob.
+export const parseFlightsPayload = (payload: unknown): Result<ParsedInner> => {
+  if (!Array.isArray(payload)) {
+    return err("Response format changed: expected payload array, got " + typeof payload);
+  }
+  const inner: readonly unknown[] = payload;
 
   const raw = [2, 3].flatMap((idx) => {
     const bucket = inner[idx];

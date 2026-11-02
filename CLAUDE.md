@@ -1,6 +1,6 @@
 # google-flights-mcp
 
-MCP server for searching Google Flights. No API key required — reverse-engineers Google's internal `FlightsFrontendService` protobuf endpoint.
+MCP server for searching Google Flights. No API key required — loads Google Flights' public search page (`/travel/flights?tfs=...`) and reads the result payload it embeds.
 
 ## Architecture
 
@@ -15,18 +15,21 @@ src/
 │   ├── logger.ts             # Structured JSON logger to stderr
 │   ├── cache.ts              # TTL cache (5min, LRU eviction)
 │   ├── retry.ts              # Circuit breaker
-│   ├── http.ts               # HTTP client with retry, undici + fetch fallback
+│   ├── http.ts               # HTTP GET with retry, undici + fetch fallback
+│   ├── concurrency.ts        # mapInBatches: paced fan-out
 │   └── price-tracker.ts      # SQLite-backed price persistence
 ├── google/                   # Google Flights integration
 │   ├── types.ts              # Immutable types (readonly, const objects, discriminated unions)
-│   ├── request-builder.ts    # Pure: FlightSearchFilters -> URL-encoded request body
-│   ├── response-parser.ts    # Pure: raw text -> Result<FlightResult[]> with structural validation
+│   ├── tfs.ts                # Pure: FlightSearchFilters -> `tfs` protobuf for the search page URL
+│   ├── page.ts               # IO: fetch the search page, extract its ds:1 payload
+│   ├── response-parser.ts    # Pure: payload -> Result<FlightResult[]> with structural validation
+│   ├── calendar.ts           # IO: cheapest fare per day, one search per day
 │   └── client.ts             # IO: fetch + cache + circuit breaker + combo assembly
 ├── tools/                    # MCP tool handlers (12 tools, thin IO shells around pure functions)
 │   ├── search-flights.ts     # search_flights (one-way, round-trip, with emissions + price context)
 │   ├── search-multi-city.ts  # search_multi_city
 │   ├── price-insights.ts     # get_price_insights (date range scan)
-│   ├── calendar-heatmap.ts   # get_calendar_heatmap (60-day daily prices from one call)
+│   ├── calendar-heatmap.ts   # get_calendar_heatmap (cheapest fare per day, up to 31 days)
 │   ├── cabin-comparison.ts   # compare_cabin_classes (economy/premium/business/first)
 │   ├── price-tracker.ts      # track_price, get_price_history, list_tracked_routes (SQLite)
 │   ├── lookup-airport.ts     # lookup_airport
@@ -41,7 +44,7 @@ src/
 ## Key design decisions
 
 - **Functional programming**: No `let`/`var`, no `.push()`, no `for` loops, no `any`, no classes. Errors flow as `Result<T,E>` values, not exceptions. IO isolated to module boundaries.
-- **No official API**: Google Flights has no public API. We reverse-engineer the same protobuf endpoint as [punitarani/fli](https://github.com/punitarani/fli) (1.9k stars). See `request-builder.ts` for the nested-array format.
+- **No official API**: Google Flights has no public API. Since 2026-08 its `FlightsFrontendService` RPCs (`GetShoppingResults`, `GetCalendarGraph`) only accept requests signed by the page's own JavaScript (`x-goog-batchexecute-bgr`); anything else gets HTTP 200 with a payload-less `[13]` row. Like [punitarani/fli](https://github.com/punitarani/fli) (see fli#223), we load the public search page instead: `tfs.ts` encodes the search, and the page inlines the same payload the RPC returned, in its `ds:1` data block. Multi-city has no page equivalent and is refused.
 - **TLS fingerprinting risk**: Google may block non-browser requests. We use `undici` with browser-like headers and fallback to `fetch`. See `http.ts` header comment for the full risk analysis and fallback strategy.
 - **Structural validation**: The response parser validates array shapes before indexing. When Google changes their response format, you get clear error messages like "expected array at index 2, got null" instead of silent corruption.
 
@@ -57,7 +60,7 @@ npm start          # Run the MCP server (stdio)
 
 ## Testing
 
-Tests cover: Result monad, date utilities, request builder (encodes correct structure), response parser (valid/invalid/malformed inputs), airport lookup, cache TTL. Run with `npm test`.
+Tests cover: Result monad, date utilities, `tfs` encoding (byte-identical to fli's encoder), page payload extraction, calendar sweep, response parser (valid/invalid/malformed inputs), airport lookup, cache TTL. Run with `npm test`.
 
 The response parser tests use synthetic fixtures that mirror Google's nested-array format. When Google changes their format, add a new fixture from a real response and update the parser.
 
@@ -70,8 +73,8 @@ The response parser tests use synthetic fixtures that mirror Google's nested-arr
 ## Google Flights response format (reference)
 
 ```
-Response: )]}'<newline><JSON array>
-Outer: array of entries, one has [2] = JSON string of inner data
+Search page: AF_initDataCallback({key: 'ds:1', ..., data: <inner>, sideChannel: {}})
+(The old RPC returned )]}'<newline>[["wrb.fr", null, "<inner as JSON string>"], ...].)
 Inner[2][0] = outbound flights array
 Inner[3][0] = return flights array
 

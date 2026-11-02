@@ -7,10 +7,10 @@ import {
   type FlightSearchFilters,
 } from "../google/types.js";
 import {
-  fetchCalendarGraph,
+  fetchCalendar,
   MAX_CALENDAR_DAYS,
   type CalendarDatePrice,
-} from "../google/calendar-graph.js";
+} from "../google/calendar.js";
 import { daysBetween } from "../lib/date.js";
 import { formatPrice } from "../lib/format.js";
 import { ok, err, type Result } from "../lib/result.js";
@@ -35,7 +35,7 @@ const SEAT_MAP: Readonly<Record<string, SeatType>> = {
   first: SeatType.FIRST,
 };
 
-// Pure: validate inputs. Google prices at most MAX_CALENDAR_DAYS per call.
+// Pure: validate inputs. Each day is one search page, so the range is capped.
 const validateInputs = (startDate: string, endDate: string): Result<number> => {
   const total = daysBetween(startDate, endDate);
   if (total < 0) return err("endDate must be after startDate.");
@@ -96,14 +96,10 @@ export const handlePriceInsights = async (
     sortBy: SortBy.CHEAPEST,
   };
 
-  const result = await fetchCalendarGraph(filters, params.startDate, params.endDate);
+  const result = await fetchCalendar(filters, params.startDate, params.endDate);
   if (result.tag === "err") return result;
 
-  // Google can return a wider window than asked for; keep only the requested range.
-  const inRange = result.value.filter(
-    (d) => d.date >= params.startDate && d.date <= params.endDate
-  );
-  const prices = inRange.length > 0 ? inRange : result.value;
+  const prices = result.value;
 
   return prices.length === 0
     ? err(`No price data found for ${origin} to ${destination} between ${params.startDate} and ${params.endDate}.`)

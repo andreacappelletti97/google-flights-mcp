@@ -1,15 +1,15 @@
 import { z } from "zod";
 import { SeatType, TripType, MaxStops, SortBy, type FlightSearchFilters } from "../google/types.js";
 import {
-  fetchCalendarGraph,
+  fetchCalendar,
   MAX_CALENDAR_DAYS,
   type CalendarDatePrice,
-} from "../google/calendar-graph.js";
+} from "../google/calendar.js";
 import { addDays } from "../lib/date.js";
 import { formatPrice } from "../lib/format.js";
 import { ok, type Result } from "../lib/result.js";
 
-const DEFAULT_DAYS = 30;
+const DEFAULT_DAYS = 14;
 const MAX_DAYS = MAX_CALENDAR_DAYS;
 
 export const calendarHeatmapSchema = z.object({
@@ -17,7 +17,7 @@ export const calendarHeatmapSchema = z.object({
   destination: z.string().length(3).describe("Arrival airport IATA code"),
   departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").describe("First date of the window to price, in YYYY-MM-DD format"),
   days: z.number().int().min(1).max(MAX_DAYS).optional().default(DEFAULT_DAYS)
-    .describe(`How many consecutive days to price, starting at departureDate (1-${MAX_DAYS}, default ${DEFAULT_DAYS}). Returned in a single request.`),
+    .describe(`How many consecutive days to price, starting at departureDate (1-${MAX_DAYS}, default ${DEFAULT_DAYS}). One search page per day, so wider windows take longer.`),
   cabinClass: z
     .enum(["economy", "premium_economy", "business", "first"])
     .optional()
@@ -99,10 +99,8 @@ export const handleCalendarHeatmap = async (
     sortBy: SortBy.CHEAPEST,
   };
 
-  const result = await fetchCalendarGraph(filters, fromDate, toDate);
+  const result = await fetchCalendar(filters, fromDate, toDate);
   if (result.tag === "err") return result;
 
-  // Google can return a wider window than asked for; keep only the requested range.
-  const inRange = result.value.filter((d) => d.date >= fromDate && d.date <= toDate);
-  return ok(formatCalendar(inRange.length > 0 ? inRange : result.value, origin, destination));
+  return ok(formatCalendar(result.value, origin, destination));
 };

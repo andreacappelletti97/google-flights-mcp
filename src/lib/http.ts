@@ -1,7 +1,8 @@
 // HTTP client with retry, browser-like TLS fingerprinting mitigation, and undici+fetch fallback.
 //
-// RISK: Google Flights has no official API. We hit their internal endpoint
-// which may block requests that don't look like a real browser. The `fli`
+// RISK: Google Flights has no official API. We load its public search page
+// (see google/page.ts), which may block requests that don't look like a real
+// browser. The `fli`
 // Python library uses curl_cffi with Chrome impersonation for this reason.
 //
 // MITIGATION STRATEGY:
@@ -32,10 +33,8 @@ const pickUserAgent = (): string =>
   USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 
 const BROWSER_HEADERS: Readonly<Record<string, string>> = {
-  "Accept": "*/*",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "Accept-Language": "en-US,en;q=0.9",
-  "Origin": "https://www.google.com",
-  "Referer": "https://www.google.com/travel/flights",
 };
 
 const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([429, 500, 502, 503, 504]);
@@ -63,17 +62,15 @@ const parseRetryAfter = (raw: string | string[] | null | undefined): number | nu
   return null;
 };
 
-// Single-attempt POST via undici with fetch fallback
-const postOnce = async (
+// Single-attempt GET via undici with fetch fallback
+const getOnce = async (
   url: string,
-  body: string,
   headers: Record<string, string>
 ): Promise<{ readonly status: number; readonly text: string; readonly retryAfterMs: number | null }> => {
   try {
     const { statusCode, headers: responseHeaders, body: responseBody } = await request(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body,
     });
     return {
       status: statusCode,
@@ -84,7 +81,7 @@ const postOnce = async (
     logger.warn("undici_failed_fallback_to_fetch", {
       error: undiciErr instanceof Error ? undiciErr.message : String(undiciErr),
     });
-    const response = await fetch(url, { method: "POST", headers, body });
+    const response = await fetch(url, { method: "GET", headers });
     return {
       status: response.status,
       text: await response.text(),
@@ -94,14 +91,13 @@ const postOnce = async (
 };
 
 // Recursive retry with exponential backoff (or Retry-After when provided)
-const postWithRetry = async (
+const getWithRetry = async (
   url: string,
-  body: string,
   headers: Record<string, string>,
   attempt: number
 ): Promise<Result<string>> => {
   try {
-    const { status, text, retryAfterMs } = await postOnce(url, body, headers);
+    const { status, text, retryAfterMs } = await getOnce(url, headers);
 
     if (status >= 200 && status < 300) return ok(text);
 
@@ -116,7 +112,7 @@ const postWithRetry = async (
         honoredRetryAfter: retryAfterMs !== null,
       });
       await delay(waitMs);
-      return postWithRetry(url, body, headers, attempt + 1);
+      return getWithRetry(url, headers, attempt + 1);
     }
 
     return err(`HTTP ${status}`);
@@ -129,26 +125,18 @@ const postWithRetry = async (
         retryInMs: Math.round(waitMs),
       });
       await delay(waitMs);
-      return postWithRetry(url, body, headers, attempt + 1);
+      return getWithRetry(url, headers, attempt + 1);
     }
     return err(e instanceof Error ? e.message : String(e));
   }
 };
 
-export const httpPost = async (
-  url: string,
-  body: string,
-  contentType: string
-): Promise<Result<string>> => {
-  const headers = {
-    ...BROWSER_HEADERS,
-    "Content-Type": contentType,
-    "User-Agent": pickUserAgent(),
-  };
+export const httpGet = async (url: string): Promise<Result<string>> => {
+  const headers = { ...BROWSER_HEADERS, "User-Agent": pickUserAgent() };
   const elapsed = startTimer();
-  const result = await postWithRetry(url, body, headers, 0);
+  const result = await getWithRetry(url, headers, 0);
   if (result.tag === "ok") {
-    logger.debug("http_post_success", { url: url.split("?")[0], durationMs: elapsed() });
+    logger.debug("http_get_success", { url: url.split("?")[0], durationMs: elapsed() });
   }
   return result;
 };

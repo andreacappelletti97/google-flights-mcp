@@ -6,19 +6,15 @@ import type {
   SearchMetadata,
 } from "./types.js";
 import { TripType } from "./types.js";
-import { buildRequestBody } from "./request-builder.js";
-import { parseFlightsResponse } from "./response-parser.js";
-import { ok, err, type Result, flatMap } from "../lib/result.js";
-import { pipe } from "../lib/pipe.js";
+import { parseFlightsPayload } from "./response-parser.js";
+import { buildTfs, searchPageUrl } from "./tfs.js";
+import { fetchPagePayload } from "./page.js";
+import { ok, err, type Result } from "../lib/result.js";
 import { logger, startTimer } from "../lib/logger.js";
 import { createCircuitBreaker } from "../lib/retry.js";
-import { httpPost } from "../lib/http.js";
 import { createCache, get as cacheGet, set as cacheSet, buildCacheKey } from "../lib/cache.js";
 import { mapInBatches } from "../lib/concurrency.js";
 import { config } from "../lib/config.js";
-
-const FLIGHTS_URL =
-  "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults";
 
 type FetchResult = {
   readonly flights: readonly FlightResult[];
@@ -40,14 +36,16 @@ const fetchFlights = async (
 
   const elapsed = startTimer();
 
+  const tfs = buildTfs(filters);
+  if (tfs.tag === "err") return tfs;
+
   const result = await circuitBreaker.execute(async () => {
-    const body = buildRequestBody(filters);
-    const textResult = await httpPost(
-      FLIGHTS_URL,
-      body,
-      "application/x-www-form-urlencoded;charset=UTF-8"
-    );
-    return pipe(textResult, flatMap(parseFlightsResponse));
+    const payload = await fetchPagePayload(searchPageUrl(tfs.value));
+    if (payload.tag === "err") return payload;
+    const parsed = parseFlightsPayload(payload.value);
+    return parsed.tag === "ok"
+      ? ok({ ...parsed.value, flights: applyClientSideFilters(parsed.value.flights, filters) })
+      : parsed;
   });
 
   if (result.tag === "ok") {
@@ -69,6 +67,19 @@ const fetchFlights = async (
 
   return result;
 };
+
+// The search page has no field for a price cap or a duration cap (the RPC
+// did), so apply them to the decoded rows. A capped search can return fewer
+// options than before, but every option honours the cap.
+const applyClientSideFilters = (
+  flights: readonly FlightResult[],
+  filters: FlightSearchFilters
+): readonly FlightResult[] =>
+  flights.filter(
+    (f) =>
+      (filters.maxPrice === undefined || f.price <= filters.maxPrice) &&
+      (filters.maxDuration === undefined || f.duration <= filters.maxDuration)
+  );
 
 const countSelected = (filters: FlightSearchFilters): number =>
   filters.segments.filter((s) => s.selectedFlight !== undefined).length;
